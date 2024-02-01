@@ -131,6 +131,20 @@ func (m *MongoDBAtlas) NewUser(ctx context.Context, req dbplugin.NewUserRequest)
 		return dbplugin.NewUserResponse{}, fmt.Errorf("roles array is required in creation statement")
 	}
 
+	// Check if IP restriction is requested
+	if databaseUser.IP != "" {
+		accessList := mongodbatlas.ProjectIPAccessList{
+			Comment:   username,
+			IPAddress: databaseUser.IP,
+		}
+		_, _, err = client.ProjectIPAccessList.Create(ctx, m.ProjectID, []*mongodbatlas.ProjectIPAccessList{
+			&accessList,
+		})
+		if err != nil {
+			return dbplugin.NewUserResponse{}, err
+		}
+	}
+
 	databaseUserRequest := &mongodbatlas.DatabaseUser{
 		Username:     username,
 		Password:     req.Password,
@@ -196,6 +210,14 @@ func (m *MongoDBAtlas) DeleteUser(ctx context.Context, req dbplugin.DeleteUserRe
 		}
 	}
 
+	// Check if IP restriction was requested
+	if databaseUser.IP != "" {
+		_, err = client.ProjectIPAccessList.Delete(ctx, m.ProjectID, databaseUser.IP)
+		if err != nil {
+			return dbplugin.DeleteUserResponse{}, err
+		}
+	}
+
 	// If the user is an X.509 user, delete the user from the $external database
 	if isX509User(req.Username) {
 		if databaseUser.DatabaseName == "" {
@@ -239,4 +261,5 @@ type mongoDBAtlasStatement struct {
 	Roles        []mongodbatlas.Role  `json:"roles,omitempty"`
 	Scopes       []mongodbatlas.Scope `json:"scopes,omitempty"`
 	X509Type     string               `json:"x509Type,omitempty"`
+	IP           string               `json:"ip,omitempty"`
 }
